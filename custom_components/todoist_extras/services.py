@@ -19,7 +19,7 @@ from homeassistant.core import (
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 
-from .api import TodoistError
+from .api import TodoistAuthError, TodoistError, TodoistRejectedError
 from .const import (
     ATTR_CONFIG_ENTRY_ID,
     ATTR_CONTENT,
@@ -132,6 +132,11 @@ def _read_file(hass: HomeAssistant, path: str) -> tuple[str, bytes, str | None]:
     return file.name, data, mimetypes.guess_type(file.name)[0]
 
 
+def _start_reauth(coordinator: TodoistCoordinator) -> None:
+    """The token was rejected during an action: ask for a new one now."""
+    coordinator.config_entry.async_start_reauth(coordinator.hass)
+
+
 async def _forget_upload(coordinator: TodoistCoordinator, file_url: str) -> None:
     """Best effort: delete an upload whose comment failed."""
     try:
@@ -173,10 +178,15 @@ async def _add_comment(hass: HomeAssistant, call: ServiceCall) -> ServiceRespons
             comment = await coordinator.client.add_comment(
                 content, attachment=attachment, **target
             )
-        except TodoistError:
+        except TodoistRejectedError:
+            # Only when Todoist clearly refused the comment: after a timeout the
+            # comment may exist, and deleting its file would break it.
             if attachment and attachment.get("file_url"):
                 await _forget_upload(coordinator, attachment["file_url"])
             raise
+    except TodoistAuthError as err:
+        _start_reauth(coordinator)
+        raise HomeAssistantError(f"Todoist: {err}") from err
     except TodoistError as err:
         raise HomeAssistantError(f"Todoist: {err}") from err
     await coordinator.async_request_refresh()
@@ -193,6 +203,9 @@ async def _add_subtask(hass: HomeAssistant, call: ServiceCall) -> ServiceRespons
             description=call.data.get(ATTR_DESCRIPTION),
             due_string=call.data.get(ATTR_DUE_STRING),
         )
+    except TodoistAuthError as err:
+        _start_reauth(coordinator)
+        raise HomeAssistantError(f"Todoist: {err}") from err
     except TodoistError as err:
         raise HomeAssistantError(f"Todoist: {err}") from err
     await coordinator.async_request_refresh()

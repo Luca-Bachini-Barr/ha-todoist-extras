@@ -41,7 +41,11 @@ class TodoistExtrasConfigFlow(ConfigFlow, domain=DOMAIN):
             return None, {"base": "invalid_auth"}
         except TodoistError:
             return None, {"base": "cannot_connect"}
-        return payload.get("user") or {}, {}
+        user = payload.get("user") if isinstance(payload, dict) else None
+        if not isinstance(user, dict) or not user.get("id"):
+            # Without a user id we can't tell accounts apart; treat as a bad reply.
+            return None, {"base": "cannot_connect"}
+        return user, {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None

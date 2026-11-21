@@ -15,7 +15,11 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
 )
 
-from custom_components.todoist_extras.api import TodoistAuthError, TodoistError
+from custom_components.todoist_extras.api import (
+    TodoistAuthError,
+    TodoistError,
+    TodoistRejectedError,
+)
 from custom_components.todoist_extras.const import DOMAIN, SCAN_INTERVAL
 
 from .conftest import FAITH, LUCA, XMAS, full_sync
@@ -100,7 +104,11 @@ async def test_full_sync_again_after_interval(
         freezer.tick(SCAN_INTERVAL)
         async_fire_time_changed(hass)
         await hass.async_block_till_done()
-    assert client.sync.await_args.args == ("*",)
+    tokens = [c.args[0] for c in client.sync.await_args_list]
+    assert len(tokens) == 31
+    assert tokens[0] == "*" and tokens[1] == "token-1"
+    assert set(tokens[2:30]) == {"token-2"}
+    assert tokens[30] == "*"  # full sync again after 30 minutes
 
 
 async def test_setup_errors(hass: HomeAssistant, client: AsyncMock, entry) -> None:
@@ -221,7 +229,7 @@ async def test_failed_comment_removes_upload(
     audio = tmp_path / "note.mp3"
     audio.write_bytes(b"x")
     hass.config.allowlist_external_dirs = {str(tmp_path)}
-    client.add_comment.side_effect = TodoistError("boom")
+    client.add_comment.side_effect = TodoistRejectedError("boom")
     if delete_fails:
         client.delete_upload.side_effect = TodoistError("gone")
     with pytest.raises(HomeAssistantError, match="boom"):
@@ -367,3 +375,34 @@ async def test_actions_need_entry_choice_with_two_accounts(
             DOMAIN, "add_comment", {"task": "Luca", "content": "x"}, blocking=True
         )
     assert err.value.translation_key == "pick_entry"
+
+
+async def test_comment_timeout_keeps_upload(
+    hass: HomeAssistant, client: AsyncMock, entry, tmp_path: Path
+) -> None:
+    await _setup(hass, entry)
+    audio = tmp_path / "note.mp3"
+    audio.write_bytes(b"x")
+    hass.config.allowlist_external_dirs = {str(tmp_path)}
+    client.add_comment.side_effect = TodoistError("timeout")
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            DOMAIN, "add_comment", {"task": LUCA, "file": str(audio)}, blocking=True
+        )
+    client.delete_upload.assert_not_awaited()
+
+
+@pytest.mark.parametrize("action", ["add_comment", "add_subtask"])
+async def test_action_auth_error_starts_reauth(
+    hass: HomeAssistant, client: AsyncMock, entry, action
+) -> None:
+    await _setup(hass, entry)
+    client.add_comment.side_effect = TodoistAuthError("401")
+    client.add_task.side_effect = TodoistAuthError("401")
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            DOMAIN, action, {"task": "Luca", "content": "x"}, blocking=True
+        )
+    await hass.async_block_till_done()
+    flows = hass.config_entries.flow.async_progress()
+    assert any(f["context"]["source"] == "reauth" for f in flows)

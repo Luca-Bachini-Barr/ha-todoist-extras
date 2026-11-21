@@ -96,3 +96,17 @@ async def test_reauth_wrong_account(
     )
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "wrong_account"
+
+
+@pytest.mark.parametrize("reply", [{}, {"user": {}}, {"user": None}])
+async def test_user_flow_reply_without_user_id(
+    hass: HomeAssistant, client: AsyncMock, reply
+) -> None:
+    client.sync.return_value = reply
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_API_TOKEN: TOKEN}
+    )
+    assert result["errors"] == {"base": "cannot_connect"}

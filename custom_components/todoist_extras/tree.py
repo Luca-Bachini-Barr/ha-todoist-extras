@@ -52,6 +52,10 @@ class AccountState:
                     store.pop(obj_id, None)
                 else:
                     store[obj_id] = obj
+        if payload.get("full_sync"):
+            # A full sync is a consistent snapshot: forget links of tasks it no
+            # longer lists so the map doesn't grow forever.
+            self.parents = {k: v for k, v in self.parents.items() if k in self.items}
 
 
 def _gone(resource: str, obj: dict[str, Any]) -> bool:
@@ -103,11 +107,11 @@ def _open_ancestor(state: AccountState, parent: Any) -> str | None:
     seen: set[str] = set()
     while parent is not None:
         parent = str(parent)
-        if parent in state.items:
-            return parent
         if parent in seen:  # never loop on bad data
             return None
         seen.add(parent)
+        if parent in state.items:
+            return parent
         parent = state.parents.get(parent)
     return None
 
@@ -141,14 +145,19 @@ def build_projects(state: AccountState) -> dict[str, ProjectView]:
         key = parent if parent is not None else f"project:{item['project_id']}"
         children.setdefault(key, []).append(item)
 
+    visited: set[str] = set()
+
     def task(item: dict[str, Any], counts: dict[str, int]) -> dict[str, Any]:
         item_id = str(item["id"])
+        visited.add(item_id)
         comments = _by_posted(notes_by_item.get(item_id, []))
         counts["comments"] += len(comments)
         due = item.get("due") or {}
         section = state.sections.get(str(item.get("section_id")))
         subtasks = []
         for child in sorted(children.get(item_id, []), key=_order):
+            if str(child["id"]) in visited:  # bad data: parent links form a cycle
+                continue
             counts["subtasks"] += 1
             subtasks.append(task(child, counts))
         deadline = item.get("deadline") or {}
@@ -176,6 +185,12 @@ def build_projects(state: AccountState) -> dict[str, ProjectView]:
         counts = {"subtasks": 0, "comments": 0}
         top = sorted(children.get(f"project:{project_id}", []), key=_order)
         tasks = [task(item, counts) for item in top]
+        # Tasks never reached from the root (a parent cycle in bad data) are
+        # shown at the top level rather than silently dropped.
+        for item in sorted(state.items.values(), key=_order):
+            item_id = str(item["id"])
+            if str(item.get("project_id")) == project_id and item_id not in visited:
+                tasks.append(task(item, counts))
         comments = _by_posted(notes_by_project.get(project_id, []))
         views[project_id] = ProjectView(
             id=project_id,

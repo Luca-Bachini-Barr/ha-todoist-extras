@@ -20,6 +20,10 @@ class TodoistAuthError(TodoistError):
     """The API token was rejected."""
 
 
+class TodoistRejectedError(TodoistError):
+    """Todoist answered with an error status, so the request was not applied."""
+
+
 class TodoistClient:
     """Talks to api.todoist.com with a personal API token."""
 
@@ -47,7 +51,9 @@ class TodoistClient:
                     raise TodoistAuthError("Todoist rejected the token (401)")
                 if resp.status >= 400:
                     body = (await resp.text())[:300]
-                    raise TodoistError(f"Todoist {path} returned {resp.status}: {body}")
+                    raise TodoistRejectedError(
+                        f"Todoist {path} returned {resp.status}: {body}"
+                    )
                 if resp.status == 204:
                     return None
                 return await resp.json(content_type=None)

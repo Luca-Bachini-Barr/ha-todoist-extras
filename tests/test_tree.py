@@ -90,6 +90,11 @@ def test_archived_project_and_full_sync_reset() -> None:
     assert XMAS not in build_projects(state)
     state.apply({"full_sync": True, "projects": [], "items": []})
     assert build_projects(state) == {}
+    assert not state.items and not state.notes and not state.project_notes
+    assert not state.parents  # links of tasks no longer listed are dropped
+    # A project that comes back brings none of the old tasks with it.
+    state.apply({"full_sync": False, "projects": [{"id": XMAS, "name": "Christmas Presents"}]})
+    assert build_projects(state)[XMAS].tasks == []
 
 
 def test_sections_are_named() -> None:
@@ -137,3 +142,16 @@ def test_parent_loop_does_not_hang() -> None:
     state.parents.update({"a": "b", "b": "a"})
     state.items["x"] = {**full_sync()["items"][4], "id": "x", "parent_id": "a"}
     assert any(t["id"] == "x" for t in build_projects(state)[XMAS].tasks)
+
+
+def test_cycle_between_open_tasks_keeps_both() -> None:
+    payload = full_sync()
+    payload["items"][3]["parent_id"] = FAITH  # Janna under Faith
+    payload["items"][4]["parent_id"] = JANNA  # Faith under Janna
+    state = AccountState()
+    state.apply(payload)
+    xmas = build_projects(state)[XMAS]
+    names = [t["content"] for t in xmas.tasks]
+    assert "Luca" in names
+    shown = names + [s["content"] for t in xmas.tasks for s in t["subtasks"]]
+    assert "Janna" in shown and "Faith" in shown
