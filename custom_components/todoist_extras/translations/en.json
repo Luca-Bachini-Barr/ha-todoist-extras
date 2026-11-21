@@ -1,0 +1,109 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Todoist Extras",
+        "description": "Paste your Todoist API token. Find it in Todoist under Settings > Integrations > Developer.",
+        "data": {
+          "api_token": "API token"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Todoist token stopped working",
+        "description": "Paste a new API token for the same Todoist account.",
+        "data": {
+          "api_token": "API token"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Todoist rejected this token.",
+      "cannot_connect": "Could not reach Todoist."
+    },
+    "abort": {
+      "already_configured": "This Todoist account is already added.",
+      "reauth_successful": "The token was updated.",
+      "wrong_account": "That token belongs to a different Todoist account."
+    }
+  },
+  "exceptions": {
+    "not_loaded": {
+      "message": "No Todoist Extras account is loaded."
+    },
+    "pick_entry": {
+      "message": "More than one Todoist account is set up; give config_entry_id."
+    },
+    "task_not_found": {
+      "message": "No single open Todoist task matches \"{task}\" (use its id or exact name)."
+    },
+    "project_not_found": {
+      "message": "No single Todoist project matches \"{project}\"."
+    },
+    "empty_comment": {
+      "message": "Give the comment some text or a file."
+    },
+    "path_not_allowed": {
+      "message": "Home Assistant is not allowed to read {file}; add its folder to allowlist_external_dirs."
+    },
+    "file_not_found": {
+      "message": "File {file} does not exist."
+    },
+    "file_too_big": {
+      "message": "File {file} is larger than 100 MB."
+    }
+  },
+  "services": {
+    "add_comment": {
+      "name": "Add comment",
+      "description": "Adds a comment to a Todoist task or project, optionally with a file such as an audio recording.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Account",
+          "description": "Only needed when more than one Todoist account is set up."
+        },
+        "task": {
+          "name": "Task",
+          "description": "Task id, or the task's exact name if it is unique."
+        },
+        "project": {
+          "name": "Project",
+          "description": "Project id or name, to comment on the project instead of a task."
+        },
+        "content": {
+          "name": "Text",
+          "description": "The comment text (Markdown). Defaults to the file name when a file is given."
+        },
+        "file": {
+          "name": "File",
+          "description": "Full path of a file to attach, e.g. /media/recordings/note.mp3. Its folder must be in allowlist_external_dirs."
+        }
+      }
+    },
+    "add_subtask": {
+      "name": "Add subtask",
+      "description": "Adds a subtask under an existing Todoist task.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Account",
+          "description": "Only needed when more than one Todoist account is set up."
+        },
+        "task": {
+          "name": "Parent task",
+          "description": "Task id, or the task's exact name if it is unique."
+        },
+        "content": {
+          "name": "Subtask",
+          "description": "The subtask's name."
+        },
+        "description": {
+          "name": "Description",
+          "description": "Optional description."
+        },
+        "due_string": {
+          "name": "Due",
+          "description": "Optional due date in Todoist's own words, e.g. \"tomorrow 5pm\"."
+        }
+      }
+    }
+  }
+}

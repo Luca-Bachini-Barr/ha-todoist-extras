@@ -1,0 +1,48 @@
+add_comment:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: todoist_extras
+    task:
+      example: "Luca"
+      selector:
+        text:
+    project:
+      example: "Christmas Presents"
+      selector:
+        text:
+    content:
+      example: "Size 14"
+      selector:
+        text:
+          multiline: true
+    file:
+      example: "/media/recordings/note.mp3"
+      selector:
+        text:
+
+add_subtask:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: todoist_extras
+    task:
+      required: true
+      example: "Luca"
+      selector:
+        text:
+    content:
+      required: true
+      example: "Buy wrapping paper"
+      selector:
+        text:
+    description:
+      selector:
+        text:
+          multiline: true
+    due_string:
+      example: "tomorrow 5pm"
+      selector:
+        text:

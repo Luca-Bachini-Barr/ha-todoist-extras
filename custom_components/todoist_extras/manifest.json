@@ -1,0 +1,12 @@
+{
+  "domain": "todoist_extras",
+  "name": "Todoist Extras",
+  "codeowners": ["@Luca-Bachini-Barr"],
+  "config_flow": true,
+  "documentation": "https://github.com/Luca-Bachini-Barr/ha-todoist-extras",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/Luca-Bachini-Barr/ha-todoist-extras/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
