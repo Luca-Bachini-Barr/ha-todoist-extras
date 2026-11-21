@@ -35,7 +35,8 @@ class TodoistExtrasConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _check(self, token: str) -> tuple[dict[str, Any] | None, dict[str, str]]:
         client = TodoistClient(async_get_clientsession(self.hass), token)
         try:
-            payload = await client.sync()
+            # Only the user is needed here; the full sync happens at setup.
+            payload = await client.sync(resource_types=["user"])
         except TodoistAuthError:
             return None, {"base": "invalid_auth"}
         except TodoistError:

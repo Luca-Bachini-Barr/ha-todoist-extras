@@ -34,15 +34,37 @@ async def test_sync_sends_token_and_resources(
 
 @pytest.mark.parametrize(
     ("status", "error"),
-    [(401, TodoistAuthError), (403, TodoistAuthError), (500, TodoistError)],
+    [(401, TodoistAuthError), (403, TodoistError), (500, TodoistError)],
 )
 async def test_errors(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, status, error
 ) -> None:
     aioclient_mock.post(f"{BASE}/sync", status=status, text="nope")
     client = TodoistClient(async_get_clientsession(hass), "secret")
-    with pytest.raises(error):
+    with pytest.raises(error) as err:
         await client.sync()
+    assert (err.type is TodoistAuthError) == (error is TodoistAuthError)
+
+
+async def test_non_json_reply(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    aioclient_mock.post(f"{BASE}/sync", text="<html>oops</html>")
+    client = TodoistClient(async_get_clientsession(hass), "secret")
+    with pytest.raises(TodoistError, match="unreadable"):
+        await client.sync()
+
+
+async def test_user_only_sync_and_delete_upload(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    aioclient_mock.post(f"{BASE}/sync", json={"user": {"id": "1"}})
+    aioclient_mock.delete(f"{BASE}/uploads", status=204)
+    client = TodoistClient(async_get_clientsession(hass), "secret")
+    await client.sync(resource_types=["user"])
+    assert json.loads(aioclient_mock.mock_calls[0][2]["resource_types"]) == ["user"]
+    assert await client.delete_upload("https://f/x") is None
+    assert str(aioclient_mock.mock_calls[1][1]).endswith("uploads?file_url=https://f/x")
 
 
 async def test_connection_error(

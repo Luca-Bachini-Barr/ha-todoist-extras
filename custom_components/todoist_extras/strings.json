@@ -34,7 +34,7 @@
       "message": "More than one Todoist account is set up; give config_entry_id."
     },
     "task_not_found": {
-      "message": "No single open Todoist task matches \"{task}\" (use its id or exact name)."
+      "message": "No single open Todoist task matches \"{task}\" (use its id or exact name; completed tasks cannot be used)."
     },
     "project_not_found": {
       "message": "No single Todoist project matches \"{project}\"."
@@ -50,6 +50,9 @@
     },
     "file_too_big": {
       "message": "File {file} is larger than 100 MB."
+    },
+    "file_unreadable": {
+      "message": "Could not read {file}: {error}"
     }
   },
   "services": {
@@ -63,7 +66,7 @@
         },
         "task": {
           "name": "Task",
-          "description": "Task id, or the task's exact name if it is unique."
+          "description": "Id or exact name (if unique) of an open task."
         },
         "project": {
           "name": "Project",
@@ -89,7 +92,7 @@
         },
         "task": {
           "name": "Parent task",
-          "description": "Task id, or the task's exact name if it is unique."
+          "description": "Id or exact name (if unique) of an open task."
         },
         "content": {
           "name": "Subtask",

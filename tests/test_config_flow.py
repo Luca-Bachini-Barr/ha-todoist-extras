@@ -28,6 +28,7 @@ async def test_user_flow(hass: HomeAssistant, client: AsyncMock) -> None:
     assert result["title"] == "John"
     assert result["data"] == {CONF_API_TOKEN: TOKEN}
     assert result["result"].unique_id == "61550591"
+    client.sync.assert_any_await(resource_types=["user"])
 
 
 @pytest.mark.parametrize(

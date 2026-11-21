@@ -41,8 +41,10 @@ class TodoistClient:
                 timeout=TIMEOUT,
                 **kwargs,
             ) as resp:
-                if resp.status in (401, 403):
-                    raise TodoistAuthError(f"Todoist rejected the token ({resp.status})")
+                # Todoist answers 401 for a bad token; 403 means "not allowed"
+                # (or no token at all) and must not start a reauth.
+                if resp.status == 401:
+                    raise TodoistAuthError("Todoist rejected the token (401)")
                 if resp.status >= 400:
                     body = (await resp.text())[:300]
                     raise TodoistError(f"Todoist {path} returned {resp.status}: {body}")
@@ -51,17 +53,25 @@ class TodoistClient:
                 return await resp.json(content_type=None)
         except (aiohttp.ClientError, TimeoutError) as err:
             raise TodoistError(f"Cannot reach Todoist: {err}") from err
+        except ValueError as err:  # a 2xx whose body is not JSON
+            raise TodoistError(f"Todoist {path} sent an unreadable reply: {err}") from err
 
-    async def sync(self, sync_token: str = "*") -> dict[str, Any]:
+    async def sync(
+        self, sync_token: str = "*", resource_types: list[str] | None = None
+    ) -> dict[str, Any]:
         """Read everything ("*") or what changed since sync_token."""
         return await self._request(
             "POST",
             "sync",
             data={
                 "sync_token": sync_token,
-                "resource_types": json.dumps(RESOURCE_TYPES),
+                "resource_types": json.dumps(resource_types or RESOURCE_TYPES),
             },
         )
+
+    async def delete_upload(self, file_url: str) -> None:
+        """Remove an uploaded file that never got attached to a comment."""
+        await self._request("DELETE", "uploads", params={"file_url": file_url})
 
     async def upload(
         self, file_name: str, content: bytes, content_type: str | None

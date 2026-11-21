@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from freezegun.api import FrozenDateTimeFactory
@@ -197,6 +197,75 @@ async def test_add_comment_with_file(
         task_id=LUCA,
     )
     assert result["attachment"]["file_url"].endswith("note.mp3")
+
+
+async def test_add_comment_file_whitespace_text_uses_file_name(
+    hass: HomeAssistant, client: AsyncMock, entry, tmp_path: Path
+) -> None:
+    await _setup(hass, entry)
+    audio = tmp_path / "note.mp3"
+    audio.write_bytes(b"x")
+    hass.config.allowlist_external_dirs = {str(tmp_path)}
+    await hass.services.async_call(
+        DOMAIN, "add_comment", {"task": LUCA, "file": str(audio), "content": "  "},
+        blocking=True,
+    )
+    assert client.add_comment.await_args.args == ("note.mp3",)
+
+
+@pytest.mark.parametrize("delete_fails", [False, True])
+async def test_failed_comment_removes_upload(
+    hass: HomeAssistant, client: AsyncMock, entry, tmp_path: Path, delete_fails
+) -> None:
+    await _setup(hass, entry)
+    audio = tmp_path / "note.mp3"
+    audio.write_bytes(b"x")
+    hass.config.allowlist_external_dirs = {str(tmp_path)}
+    client.add_comment.side_effect = TodoistError("boom")
+    if delete_fails:
+        client.delete_upload.side_effect = TodoistError("gone")
+    with pytest.raises(HomeAssistantError, match="boom"):
+        await hass.services.async_call(
+            DOMAIN, "add_comment", {"task": LUCA, "file": str(audio)}, blocking=True
+        )
+    client.delete_upload.assert_awaited_once_with(
+        "https://files.todoist.com/x/note.mp3"
+    )
+
+
+async def test_add_comment_file_too_big(
+    hass: HomeAssistant, client: AsyncMock, entry, tmp_path: Path
+) -> None:
+    await _setup(hass, entry)
+    big = tmp_path / "big.mp3"
+    big.write_bytes(b"0123456789")
+    hass.config.allowlist_external_dirs = {str(tmp_path)}
+    with (
+        patch("custom_components.todoist_extras.services.MAX_UPLOAD_BYTES", 5),
+        pytest.raises(ServiceValidationError) as err,
+    ):
+        await hass.services.async_call(
+            DOMAIN, "add_comment", {"task": LUCA, "file": str(big)}, blocking=True
+        )
+    assert err.value.translation_key == "file_too_big"
+    client.upload.assert_not_awaited()
+
+
+async def test_add_comment_file_unreadable(
+    hass: HomeAssistant, client: AsyncMock, entry, tmp_path: Path
+) -> None:
+    await _setup(hass, entry)
+    audio = tmp_path / "note.mp3"
+    audio.write_bytes(b"x")
+    hass.config.allowlist_external_dirs = {str(tmp_path)}
+    with (
+        patch.object(Path, "open", side_effect=PermissionError("denied")),
+        pytest.raises(ServiceValidationError) as err,
+    ):
+        await hass.services.async_call(
+            DOMAIN, "add_comment", {"task": LUCA, "file": str(audio)}, blocking=True
+        )
+    assert err.value.translation_key == "file_unreadable"
 
 
 @pytest.mark.parametrize(

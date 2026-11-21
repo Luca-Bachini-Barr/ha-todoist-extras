@@ -117,3 +117,23 @@ def test_find_task_ambiguous_name() -> None:
     state = AccountState()
     state.apply(payload)
     assert find_task(state, "Luca") is None
+
+
+def test_orphan_moves_to_nearest_open_ancestor() -> None:
+    payload = full_sync()
+    # Luca > Luca - subtask > grandchild
+    payload["items"].append(
+        {**payload["items"][2], "id": "gc", "content": "grandchild", "parent_id": LUCA_SUB}
+    )
+    state = AccountState()
+    state.apply(payload)
+    state.apply({"full_sync": False, "items": [{"id": LUCA_SUB, "parent_id": LUCA, "is_deleted": True}]})
+    luca = build_projects(state)[XMAS].tasks[0]
+    assert [s["content"] for s in luca["subtasks"]] == ["grandchild"]
+
+
+def test_parent_loop_does_not_hang() -> None:
+    state = _state()
+    state.parents.update({"a": "b", "b": "a"})
+    state.items["x"] = {**full_sync()["items"][4], "id": "x", "parent_id": "a"}
+    assert any(t["id"] == "x" for t in build_projects(state)[XMAS].tasks)

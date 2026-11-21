@@ -30,6 +30,9 @@ class AccountState:
     notes: dict[str, dict[str, Any]] = field(default_factory=dict)
     project_notes: dict[str, dict[str, Any]] = field(default_factory=dict)
     user: dict[str, Any] = field(default_factory=dict)
+    # Every task's parent, kept after the task itself is completed or deleted,
+    # so its open subtasks can move to the nearest ancestor that is still open.
+    parents: dict[str, str | None] = field(default_factory=dict)
 
     def apply(self, payload: dict[str, Any]) -> None:
         """Merge one sync response (full or incremental) into the store."""
@@ -42,6 +45,9 @@ class AccountState:
             store: dict[str, dict[str, Any]] = getattr(self, key)
             for obj in payload.get(resource) or []:
                 obj_id = str(obj["id"])
+                if resource == "items" and "parent_id" in obj:
+                    parent = obj["parent_id"]
+                    self.parents[obj_id] = str(parent) if parent is not None else None
                 if _gone(resource, obj):
                     store.pop(obj_id, None)
                 else:
@@ -92,6 +98,20 @@ def _duration(raw: dict[str, Any] | None) -> str | None:
     return f"{raw.get('amount')} {raw.get('unit')}"
 
 
+def _open_ancestor(state: AccountState, parent: Any) -> str | None:
+    """The nearest open task among parent, grandparent, ...; None = project root."""
+    seen: set[str] = set()
+    while parent is not None:
+        parent = str(parent)
+        if parent in state.items:
+            return parent
+        if parent in seen:  # never loop on bad data
+            return None
+        seen.add(parent)
+        parent = state.parents.get(parent)
+    return None
+
+
 @dataclass
 class ProjectView:
     """One project as the sensor shows it."""
@@ -117,11 +137,8 @@ def build_projects(state: AccountState) -> dict[str, ProjectView]:
         notes_by_project.setdefault(str(note.get("project_id")), []).append(note)
     children: dict[str | None, list[dict[str, Any]]] = {}
     for item in state.items.values():
-        parent = item.get("parent_id")
-        # A subtask whose parent is gone (completed/deleted) moves up a level.
-        if parent is not None and str(parent) not in state.items:
-            parent = None
-        key = str(parent) if parent is not None else f"project:{item['project_id']}"
+        parent = _open_ancestor(state, item.get("parent_id"))
+        key = parent if parent is not None else f"project:{item['project_id']}"
         children.setdefault(key, []).append(item)
 
     def task(item: dict[str, Any], counts: dict[str, int]) -> dict[str, Any]:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import mimetypes
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -36,6 +37,8 @@ from .tree import find_project, find_task
 
 if TYPE_CHECKING:
     from .coordinator import TodoistCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 ADD_COMMENT_SCHEMA = vol.All(
     vol.Schema(
@@ -110,13 +113,31 @@ def _read_file(hass: HomeAssistant, path: str) -> tuple[str, bytes, str | None]:
             translation_key="file_not_found",
             translation_placeholders={"file": path},
         )
-    if file.stat().st_size > MAX_UPLOAD_BYTES:
+    try:
+        with file.open("rb") as handle:
+            # Read one byte past the cap so a file that grew is still caught.
+            data = handle.read(MAX_UPLOAD_BYTES + 1)
+    except OSError as err:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="file_unreadable",
+            translation_placeholders={"file": path, "error": str(err)},
+        ) from err
+    if len(data) > MAX_UPLOAD_BYTES:
         raise ServiceValidationError(
             translation_domain=DOMAIN,
             translation_key="file_too_big",
             translation_placeholders={"file": path},
         )
-    return file.name, file.read_bytes(), mimetypes.guess_type(file.name)[0]
+    return file.name, data, mimetypes.guess_type(file.name)[0]
+
+
+async def _forget_upload(coordinator: TodoistCoordinator, file_url: str) -> None:
+    """Best effort: delete an upload whose comment failed."""
+    try:
+        await coordinator.client.delete_upload(file_url)
+    except TodoistError as err:
+        _LOGGER.warning("Could not remove unattached upload %s: %s", file_url, err)
 
 
 async def _add_comment(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
@@ -138,7 +159,7 @@ async def _add_comment(hass: HomeAssistant, call: ServiceCall) -> ServiceRespons
                 translation_placeholders={"project": ref},
             )
         target["project_id"] = project_id
-    content: str = call.data[ATTR_CONTENT]
+    content: str = call.data[ATTR_CONTENT].strip()
     attachment: dict[str, Any] | None = None
     try:
         if path := call.data.get(ATTR_FILE):
@@ -148,9 +169,14 @@ async def _add_comment(hass: HomeAssistant, call: ServiceCall) -> ServiceRespons
             uploaded = await coordinator.client.upload(name, data, mime)
             attachment = {k: uploaded.get(k) for k in ATTACHMENT_FIELDS}
             content = content or name
-        comment = await coordinator.client.add_comment(
-            content, attachment=attachment, **target
-        )
+        try:
+            comment = await coordinator.client.add_comment(
+                content, attachment=attachment, **target
+            )
+        except TodoistError:
+            if attachment and attachment.get("file_url"):
+                await _forget_upload(coordinator, attachment["file_url"])
+            raise
     except TodoistError as err:
         raise HomeAssistantError(f"Todoist: {err}") from err
     await coordinator.async_request_refresh()
