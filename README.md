@@ -29,8 +29,8 @@ Attributes are not written to the recorder database.
 | `todoist_extras.add_comment` | Comment on a task (`task`) or a project (`project`) with `content`, and/or a `file` to attach, such as an audio recording. Returns the comment id and attachment. |
 | `todoist_extras.add_subtask` | Add a subtask under `task`, with optional `description` and `due_string` ("tomorrow 5pm"). Returns the new task id. |
 
-`task` takes a task id or the task's exact name (when only one open task has
-that name). `project` takes an id or name. A `file` must be in a folder listed
+`task` takes the id of an **open** task, or its exact name (when only one open
+task has that name). Completed tasks can't be targeted. `project` takes an id or name. A `file` must be in a folder listed
 in `allowlist_external_dirs` (for example `/media`).
 
 ## Setup
